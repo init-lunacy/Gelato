@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Gelato.Config;
 using Gelato.Decorators;
+using Gelato.Services;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Entities;
 using MediaBrowser.Common.Net;
@@ -67,6 +68,18 @@ public sealed class GelatoManager(
         memoryCache.Set($"meta:{guid}", meta, TimeSpan.FromMinutes(360));
     }
 
+    public void SaveDiscoveryEntry(Guid guid, DiscoveryCacheEntry entry)
+    {
+        memoryCache.Set($"discovery:{guid}", entry, TimeSpan.FromHours(6));
+    }
+
+    public DiscoveryCacheEntry? GetDiscoveryEntry(Guid guid)
+    {
+        return memoryCache.TryGetValue($"discovery:{guid}", out var value)
+            ? value as DiscoveryCacheEntry
+            : null;
+    }
+
     public StremioMeta? GetStremioMeta(Guid guid)
     {
         return memoryCache.TryGetValue($"meta:{guid}", out var value) ? value as StremioMeta : null;
@@ -75,6 +88,11 @@ public sealed class GelatoManager(
     public void RemoveStremioMeta(Guid guid)
     {
         memoryCache.Remove($"meta:{guid}");
+    }
+
+    public void RemoveDiscoveryEntry(Guid guid)
+    {
+        memoryCache.Remove($"discovery:{guid}");
     }
 
     public void ClearCache()
@@ -1050,6 +1068,47 @@ public sealed class GelatoManager(
             {
                 new() { Type = ImageType.Primary, Path = primary },
             }.ToArray();
+        }
+
+        item.Id = libraryManager.GetNewItemId(item.Path, item.GetType());
+        item.PresentationUniqueKey = item.CreatePresentationUniqueKey();
+        return item;
+    }
+
+    public BaseItem? IntoBaseItem(DiscoveryCacheEntry entry)
+    {
+        return entry.Kind switch
+        {
+            DiscoveryItemKind.Movie => IntoBaseItemFromDiscovery(entry, new Movie()),
+            DiscoveryItemKind.Series => IntoBaseItemFromDiscovery(entry, new Series()),
+            DiscoveryItemKind.Episode => IntoBaseItemFromDiscovery(entry, new Episode()),
+            _ => null,
+        };
+    }
+
+    private BaseItem IntoBaseItemFromDiscovery(DiscoveryCacheEntry entry, BaseItem item)
+    {
+        item.Name = entry.Name ?? "";
+        item.Overview = entry.Overview;
+        item.PremiereDate = entry.PremiereDate;
+        item.ProductionYear = entry.Year;
+        item.Path = $"gelato://discovery/{entry.Provider.ToString().ToLowerInvariant()}/{entry.Kind.ToString().ToLowerInvariant()}/{entry.Key}";
+        item.IsVirtualItem = false;
+        item.DateModified = DateTime.UtcNow;
+        item.DateLastSaved = DateTime.UtcNow;
+        item.DateCreated = DateTime.UtcNow;
+
+        foreach (var providerId in entry.ProviderIds)
+        {
+            item.SetProviderId(providerId.Key, providerId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.ImageUrl))
+        {
+            item.ImageInfos =
+            [
+                new ItemImageInfo { Type = ImageType.Primary, Path = entry.ImageUrl },
+            ];
         }
 
         item.Id = libraryManager.GetNewItemId(item.Path, item.GetType());

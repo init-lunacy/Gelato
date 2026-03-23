@@ -85,6 +85,20 @@
               </label>
             </div>
 
+            <div class="checkboxContainer checkboxContainer-withDescription">
+              <label>
+                <input is="emby-checkbox" type="checkbox" id="chkUseTmdbForDiscovery" />
+                <span>Use TMDB for search & discovery</span>
+              </label>
+              <div class="fieldDescription">Uses TMDB for remote movie, show, and actor discovery while keeping AIOStreams for playback.</div>
+            </div>
+
+            <div class="inputContainer">
+              <label class="inputLabel inputLabelUnfocused" for="txtTmdbApiKey">TMDB API key:</label>
+              <input is="emby-input" type="text" id="txtTmdbApiKey" class="emby-input" />
+              <div class="fieldDescription">Required when TMDB discovery mode is enabled.</div>
+            </div>
+
             <div class="checkboxContainer checkboxContainer-withDescription" style="margin-bottom: 0.5em;">
               <label>
                 <input is="emby-checkbox" type="checkbox" id="chkFilterUnreleased" />
@@ -270,6 +284,8 @@
         const txtStreamTTL = page.querySelector('#txtStreamTTL');
         const chkEnableMixed = page.querySelector('#chkEnableMixed');
         const chkDisableSearch = page.querySelector('#chkDisableSearch');
+        const chkUseTmdbForDiscovery = page.querySelector('#chkUseTmdbForDiscovery');
+        const txtTmdbApiKey = page.querySelector('#txtTmdbApiKey');
         const chkFilterUnreleased = page.querySelector('#chkFilterUnreleased');
         const txtBufferDays = page.querySelector('#txtBufferDays');
         const txtFFmpegAnalyzeDuration = page.querySelector('#txtFFmpegAnalyzeDuration');
@@ -548,6 +564,8 @@
             if (txtStreamTTL) txtStreamTTL.value = cfg.StreamTTL || 3600;
             if (chkEnableMixed) chkEnableMixed.checked = cfg.EnableMixed ?? true;
             if (chkDisableSearch) chkDisableSearch.checked = cfg.DisableSearch || false;
+            if (chkUseTmdbForDiscovery) chkUseTmdbForDiscovery.checked = cfg.UseTmdbForDiscovery || false;
+            if (txtTmdbApiKey) txtTmdbApiKey.value = cfg.TmdbApiKey || "";
             if (chkFilterUnreleased) chkFilterUnreleased.checked = cfg.FilterUnreleased || false;
             if (txtBufferDays) txtBufferDays.value = cfg.FilterUnreleasedBufferDays || 30;
             if (txtFFmpegAnalyzeDuration) txtFFmpegAnalyzeDuration.value = cfg.FFmpegAnalyzeDuration || "5M";
@@ -580,6 +598,8 @@
             cfg.EnableMixed = chkEnableMixed.checked;
 
             cfg.DisableSearch = chkDisableSearch.checked;
+            cfg.UseTmdbForDiscovery = chkUseTmdbForDiscovery.checked;
+            cfg.TmdbApiKey = txtTmdbApiKey.value.trim();
             cfg.FilterUnreleased = chkFilterUnreleased.checked;
             cfg.FilterUnreleasedBufferDays = parseInt(txtBufferDays.value) || 30;
 

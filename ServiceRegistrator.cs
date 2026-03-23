@@ -27,6 +27,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
     {
         services.AddSingleton<InsertActionFilter>();
         services.AddSingleton<SearchActionFilter>();
+        services.AddSingleton<PersonPageFilter>();
         services.AddSingleton<PlaybackInfoFilter>();
         services.AddSingleton<ImageResourceFilter>();
         services.AddSingleton<DeleteResourceFilter>();
@@ -38,6 +39,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton(sp => new Lazy<GelatoManager>(sp.GetRequiredService<GelatoManager>));
         services.AddSingleton<CatalogService>();
         services.AddSingleton<CatalogImportService>();
+        services.AddSingleton<DiscoveryService>();
         services.AddSingleton<PalcoCacheService>();
         services.AddSingleton<IHostedService, GelatoJavaScriptRegistrationService>();
         services.AddSingleton<SubtitleProvider>();
@@ -51,6 +53,10 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         {
             client.BaseAddress = new Uri("https://api.introdb.app");
             client.Timeout = TimeSpan.FromSeconds(IntroDbClient.DefaultTimeoutSeconds);
+        });
+        services.AddHttpClient<TmdbClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
         });
         services.AddSingleton<IMediaSegmentProvider, IntroDbSegmentProvider>();
 
@@ -69,6 +75,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         {
             o.Filters.AddService<InsertActionFilter>(order: 1);
             o.Filters.AddService<SearchActionFilter>(order: 2);
+            o.Filters.AddService<PersonPageFilter>(order: 2);
             o.Filters.AddService<PlaybackInfoFilter>(order: 3);
             o.Filters.AddService<ImageResourceFilter>();
             o.Filters.AddService<DeleteResourceFilter>();

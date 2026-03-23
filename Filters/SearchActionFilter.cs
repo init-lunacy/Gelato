@@ -1,4 +1,5 @@
 using Gelato.Config;
+using Gelato.Services;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Model.Dto;
@@ -12,6 +13,7 @@ namespace Gelato.Filters;
 public class SearchActionFilter(
     IDtoService dtoService,
     GelatoManager manager,
+    DiscoveryService discovery,
     ILogger<SearchActionFilter> log
 ) : IAsyncActionFilter, IOrderedFilter
 {
@@ -28,7 +30,6 @@ public class SearchActionFilter(
             cfg.DisableSearch
             || !ctx.IsApiSearchAction()
             || !ctx.TryGetActionArgument<string>("searchTerm", out var searchTerm)
-            || !await cfg.Stremio.IsReady()
         )
         {
             await next();
@@ -54,7 +55,35 @@ public class SearchActionFilter(
         ctx.TryGetActionArgument("startIndex", out var start, 0);
         ctx.TryGetActionArgument("limit", out var limit, 25);
 
-        var metas = await SearchMetasAsync(searchTerm, requestedTypes, cfg, userId);
+        List<BaseItemDto> dtos;
+        BaseItemDto[] paged;
+        if (discovery.UseTmdb(cfg))
+        {
+            var results = await discovery
+                .SearchTmdbAsync(searchTerm, requestedTypes, start, limit, ctx.HttpContext.RequestAborted)
+                .ConfigureAwait(false);
+            dtos = results.Select(discovery.ToDto).ToList();
+            paged = dtos.Take(limit).ToArray();
+        }
+        else
+        {
+            requestedTypes.Remove(BaseItemKind.Person);
+            if (requestedTypes.Count == 0)
+            {
+                await next();
+                return;
+            }
+
+            if (!await cfg.Stremio.IsReady())
+            {
+                await next();
+                return;
+            }
+
+            var metas = await SearchMetasAsync(searchTerm, requestedTypes, cfg, userId);
+            dtos = ConvertMetasToDtos(metas);
+            paged = dtos.Skip(start).Take(limit).ToArray();
+        }
 
         log.LogInformation(
             "Intercepted /Items search \"{Query}\" types=[{Types}] start={Start} limit={Limit} results={Results}",
@@ -62,11 +91,8 @@ public class SearchActionFilter(
             string.Join(",", requestedTypes),
             start,
             limit,
-            metas.Count
+            dtos.Count
         );
-
-        var dtos = ConvertMetasToDtos(metas);
-        var paged = dtos.Skip(start).Take(limit).ToArray();
 
         ctx.Result = new OkObjectResult(
             new QueryResult<BaseItemDto> { Items = paged, TotalRecordCount = dtos.Count }
@@ -75,7 +101,9 @@ public class SearchActionFilter(
 
     private HashSet<BaseItemKind> GetRequestedItemTypes(ActionExecutingContext ctx)
     {
-        var requested = new HashSet<BaseItemKind>([BaseItemKind.Movie, BaseItemKind.Series]);
+        var requested = new HashSet<BaseItemKind>(
+            [BaseItemKind.Movie, BaseItemKind.Series, BaseItemKind.Person]
+        );
 
         // Already parsed as BaseItemKind[] by model binder
         if (
@@ -84,8 +112,8 @@ public class SearchActionFilter(
         )
         {
             requested = new HashSet<BaseItemKind>(includeTypes);
-            // Only keep Movie and Series
-            requested.IntersectWith([BaseItemKind.Movie, BaseItemKind.Series]);
+            // Only keep remote kinds we can supply.
+            requested.IntersectWith([BaseItemKind.Movie, BaseItemKind.Series, BaseItemKind.Person]);
         }
 
         // Remove excluded types
@@ -104,6 +132,7 @@ public class SearchActionFilter(
         )
         {
             requested.Remove(BaseItemKind.Series);
+            requested.Remove(BaseItemKind.Person);
         }
 
         return requested;

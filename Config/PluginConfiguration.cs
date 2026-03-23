@@ -10,6 +10,8 @@ public class PluginConfiguration : BasePluginConfiguration
 {
     public string MoviePath { get; set; } = Path.Combine(Path.GetTempPath(), "gelato", "movies");
     public string SeriesPath { get; set; } = Path.Combine(Path.GetTempPath(), "gelato", "series");
+    public string TmdbApiKey { get; set; } = "";
+    public bool UseTmdbForDiscovery { get; set; } = false;
     public int StreamTTL { get; set; } = 3600;
     public int CatalogMaxItems { get; set; } = 100;
     public string Url { get; set; } = "";
@@ -83,6 +85,8 @@ public class UserConfig
             DisableSearch = DisableSearch,
 
             // All other fields from base config
+            TmdbApiKey = baseConfig.TmdbApiKey,
+            UseTmdbForDiscovery = baseConfig.UseTmdbForDiscovery,
             StreamTTL = baseConfig.StreamTTL,
             CatalogMaxItems = baseConfig.CatalogMaxItems,
             EnableMixed = baseConfig.EnableMixed,

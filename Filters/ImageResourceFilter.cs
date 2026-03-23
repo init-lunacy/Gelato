@@ -35,14 +35,14 @@ public sealed class ImageResourceFilter(
             return;
         }
 
+        var discoveryImage = manager.GetDiscoveryEntry(guid)?.ImageUrl;
         var stremioMeta = manager.GetStremioMeta(guid);
-        if (stremioMeta?.Poster is null)
+        var url = discoveryImage ?? stremioMeta?.Poster;
+        if (string.IsNullOrWhiteSpace(url))
         {
             await next();
             return;
         }
-
-        var url = stremioMeta.Poster;
 
         try
         {

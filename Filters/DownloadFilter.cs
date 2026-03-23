@@ -49,7 +49,15 @@ public sealed class DownloadFilter(
                 // some clients do not send mediasource id. the use the itemid in the query
                 if (!hasMediaSourceId || !item.IsStream())
                 {
-                    path = mediaSourceManager.GetStaticMediaSources(item, true, user)[0].Path;
+                    path = (
+                        await mediaSourceManager.GetPlaybackMediaSources(
+                            item,
+                            user,
+                            true,
+                            true,
+                            CancellationToken.None
+                        )
+                    )[0].Path;
                 }
 
                 var client = httpClientFactory.CreateClient();

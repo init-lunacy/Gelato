@@ -7,3 +7,12 @@ Release
 *.zip
 dist/
 *.sln.DotSettings.user
+NuGet/
+.userprofile/
+.nuget/
+.github/
+.dotnet-home/
+.dotnet/
+.appdata/
+dotnet-install.ps1
+NuGet.Config

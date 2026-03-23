@@ -1,9 +1,11 @@
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Entities; // User
+using Gelato;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
+using Gelato.Services;
 
 namespace Gelato.Decorators;
 
@@ -83,6 +85,45 @@ public sealed class DtoServiceDecorator(IDtoService inner, Lazy<GelatoManager> m
         if (IsGelato(dto))
         {
             dto.CanDownload = true;
+            if (GelatoPlugin.Instance?.Configuration?.UseTmdbForDiscovery == true
+                && item is not null
+                && item.GelatoData<List<DiscoveryPersonLink>>("people") is { Count: > 0 } people)
+            {
+                dto.People = people
+                    .Where(p => !string.IsNullOrWhiteSpace(p.Name) && p.TmdbId is not null)
+                    .Select(p => new BaseItemPerson
+                    {
+                        Name = p.Name,
+                        Role = p.Role,
+                        Id = new DiscoveryCacheEntry
+                        {
+                            Provider = DiscoveryProvider.Tmdb,
+                            Kind = DiscoveryItemKind.Person,
+                            Key = p.TmdbId!.Value.ToString(),
+                            Name = p.Name,
+                            ImageUrl = p.ImageUrl,
+                            ProviderIds = new Dictionary<string, string> { { "Tmdb", p.TmdbId.Value.ToString() } },
+                        }.ToGuid(),
+                    })
+                    .ToArray();
+
+                foreach (var person in people.Where(p => p.TmdbId is not null))
+                {
+                    var entry = new DiscoveryCacheEntry
+                    {
+                        Provider = DiscoveryProvider.Tmdb,
+                        Kind = DiscoveryItemKind.Person,
+                        Key = person.TmdbId!.Value.ToString(),
+                        Name = person.Name,
+                        ImageUrl = person.ImageUrl,
+                        ProviderIds = new Dictionary<string, string>
+                        {
+                            { "Tmdb", person.TmdbId.Value.ToString() },
+                        },
+                    };
+                    _manager.Value.SaveDiscoveryEntry(entry.ToGuid(), entry);
+                }
+            }
             // mark if placeholder
             if (
                 isList

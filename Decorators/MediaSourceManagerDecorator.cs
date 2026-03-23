@@ -117,66 +117,12 @@ public sealed class MediaSourceManagerDecorator(
         }
         else if (uri is not null && !manager.HasStreamSync(cacheKey))
         {
-            // Bug in web UI that calls the detail page twice. So that's why there's a lock.
-            _lock
-                .RunSingleFlightAsync(
-                    item.Id,
-                    async ct =>
-                    {
-                        _log.LogDebug("GetStaticMediaSources refreshing streams for {Id}", item.Id);
-
-                        // Prewarm subtitle cache in the background if Gelato Subtitles
-                        // is enabled for this library.
-                        var libraryOptions = _libraryManager.GetLibraryOptions(item);
-                        var subtitlePrewarmEnabled =
-                            libraryOptions.SubtitleDownloadLanguages?.Length > 0
-                            && !libraryOptions.DisabledSubtitleFetchers.Contains(
-                                "Gelato Subtitles",
-                                StringComparer.OrdinalIgnoreCase
-                            );
-
-                        if (subtitlePrewarmEnabled)
-                        {
-                            _ = Task.Run(async () =>
-                            {
-                                try
-                                {
-                                    await _subtitleProvider
-                                        .Value.GetSubtitlesAsync(
-                                            uri.ExternalId,
-                                            uri.MediaType,
-                                            CancellationToken.None
-                                        )
-                                        .ConfigureAwait(false);
-                                }
-                                catch (Exception ex)
-                                {
-                                    _log.LogWarning(ex, "Subtitle prewarm failed for {Uri}", uri);
-                                }
-                            });
-                        }
-
-                        try
-                        {
-                            var count = await manager
-                                .SyncStreams(item, userId, ct)
-                                .ConfigureAwait(false);
-                            if (count > 0)
-                            {
-                                manager.SetStreamSync(cacheKey);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _log.LogError(ex, "Failed to sync streams");
-                        }
-                    }
-                )
-                .GetAwaiter()
-                .GetResult();
-
-            // refresh item
-            libraryManager.GetItemById(item.Id);
+            _ = Task.Run(
+                async () =>
+                {
+                    await PrefetchStreamsAsync(item, userId, uri, cacheKey).ConfigureAwait(false);
+                }
+            );
         }
 
         var sources = _inner.GetStaticMediaSources(item, enablePathSubstitution, user).ToList();
@@ -318,6 +264,22 @@ public sealed class MediaSourceManagerDecorator(
         var ctx = _http.HttpContext;
 
         var sources = GetStaticMediaSources(item, enablePathSubstitution, user);
+        var hasResolvedGelatoSource = sources.Any(s =>
+            !string.IsNullOrWhiteSpace(s.Path)
+            && !s.Path.StartsWith("gelato", StringComparison.OrdinalIgnoreCase)
+            && !s.Path.StartsWith("stremio", StringComparison.OrdinalIgnoreCase)
+        );
+
+        if (!hasResolvedGelatoSource && item.IsGelato())
+        {
+            var uri = StremioUri.FromBaseItem(item);
+            if (uri is not null)
+            {
+                var cacheKey = $"{user.Id}:{item.Id}";
+                await PrefetchStreamsAsync(item, user.Id, uri, cacheKey, ct).ConfigureAwait(false);
+                sources = GetStaticMediaSources(item, enablePathSubstitution, user);
+            }
+        }
 
         Guid? mediaSourceId =
             ctx?.Items.TryGetValue("MediaSourceId", out var idObj) == true
@@ -613,5 +575,68 @@ public sealed class MediaSourceManagerDecorator(
             { /* best effort */
             }
         }
+    }
+
+    private async Task PrefetchStreamsAsync(
+        BaseItem item,
+        Guid userId,
+        StremioUri uri,
+        string cacheKey,
+        CancellationToken ct = default
+    )
+    {
+        var manager = _manager.Value;
+        if (manager.HasStreamSync(cacheKey))
+            return;
+
+        await _lock.RunSingleFlightAsync(
+            item.Id,
+            async token =>
+            {
+                _log.LogDebug("Background stream prefetch starting for {Id}", item.Id);
+                var linkedCt = ct == default ? token : ct;
+
+                var libraryOptions = _libraryManager.GetLibraryOptions(item);
+                var subtitlePrewarmEnabled =
+                    libraryOptions.SubtitleDownloadLanguages?.Length > 0
+                    && !libraryOptions.DisabledSubtitleFetchers.Contains(
+                        "Gelato Subtitles",
+                        StringComparer.OrdinalIgnoreCase
+                    );
+
+                if (subtitlePrewarmEnabled)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await _subtitleProvider.Value.GetSubtitlesAsync(
+                                uri.ExternalId,
+                                uri.MediaType,
+                                CancellationToken.None
+                            ).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            _log.LogWarning(ex, "Subtitle prewarm failed for {Uri}", uri);
+                        }
+                    });
+                }
+
+                try
+                {
+                    var count = await manager.SyncStreams(item, userId, linkedCt).ConfigureAwait(false);
+                    if (count > 0)
+                        manager.SetStreamSync(cacheKey);
+                    libraryManager.GetItemById(item.Id);
+                    _log.LogDebug("Background stream prefetch completed for {Id}", item.Id);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogError(ex, "Background stream prefetch failed for {Id}", item.Id);
+                }
+            },
+            ct
+        ).ConfigureAwait(false);
     }
 }
